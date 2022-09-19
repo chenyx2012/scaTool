@@ -1,43 +1,41 @@
 # -*- coding: utf-8 -*-
 import logging
-from msilib.schema import Error
 import os
 import shlex
 import shutil
 import stat
 import subprocess
 import time
-from requests import head
 import urllib3
 import json
 import jsonpath
 from reposca.repoDb import RepoDb
 from reposca.analyzeSca import getScaAnalyze
 from reposca.takeRepoSca import cleanTemp
+from util.catchUtil import catch_error
 from util.popUtil import popKill
 from util.extractUtil import extractCode
 from util.formateUtil import formateUrl
-from util.catchUtil import catch_error
 from git.repo import Repo
 
 ACCESS_TOKEN = '694b8482b84b3704c70bceef66e87606'
 GIT_URL = 'https://gitee.com'
-SOURTH_PATH = 'D:/persistentRepo'
-TEMP_PATH = 'D:/tempRepo'
+SOURTH_PATH = '/home/chenyx/persistentRepo'
+TEMP_PATH = '/home/chenyx/tempRepo'
 # passRepoList = ['kernel','bishengjdk','gcc']
 LIC_COP_LIST = ['license', 'readme', 'notice', 'copying', 'third_party_open_source_software_notice', 'copyright']
 logging.getLogger().setLevel(logging.INFO)
 
 class PrSca(object):
 
-    def __init__(self):
+    # def __init__(self):
         #连接数据库
-        self._dbObject_ = RepoDb(
-            host_db = os.environ.get("MYSQL_HOST"), 
-            user_db = os.environ.get("MYSQL_USER"), 
-            password_db = os.environ.get("MYSQL_PASSWORD"), 
-            name_db = os.environ.get("MYSQL_DB_NAME"), 
-            port_db = int(os.environ.get("MYSQL_PORT")))
+        # self._dbObject_ = RepoDb(
+        #     host_db = os.environ.get("MYSQL_HOST"), 
+        #     user_db = os.environ.get("MYSQL_USER"), 
+        #     password_db = os.environ.get("MYSQL_PASSWORD"), 
+        #     name_db = os.environ.get("MYSQL_DB_NAME"), 
+        #     port_db = int(os.environ.get("MYSQL_PORT")))
 
     @catch_error
     def doSca(self, url):
@@ -101,7 +99,13 @@ class PrSca(object):
                 perRemote.pull()
                 #copy file
                 tempDir = TEMP_PATH + '/'+self._owner_ + '/' + str(timestamp) + '/' + self._repo_
-                shutil.copytree(self._repoSrc_, tempDir)
+                os.makedirs(TEMP_PATH + '/'+self._owner_ + '/' + str(timestamp))
+                # shutil.copytree(self._repoSrc_, tempDir)'
+                command = shlex.split('cp -r %s  %s' % (self._repoSrc_, tempDir))
+                resultCode = subprocess.Popen(command)
+                while subprocess.Popen.poll(resultCode) == None:
+                    time.sleep(1)
+                popKill(resultCode)
                 self._repoSrc_ = tempDir              
             else:     
                 self._file_ = 'temp'
@@ -271,9 +275,10 @@ class PrSca(object):
         resStatus = response.status
 
         if resStatus == 403:
-            raise Error("Token 权限问题")
+            raise Exception('Token 权限问题')
+        
         if resStatus == 404:
-            raise Error("Gitee API Fail")
+            raise Exception("Gitee API Fail")
 
         repoStr = response.data.decode('utf-8')
         temList = json.loads(repoStr)
