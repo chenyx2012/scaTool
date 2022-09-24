@@ -1,41 +1,30 @@
 # -*- coding: utf-8 -*-
+import asyncio
 import logging
 import os
 import shlex
-import shutil
 import stat
 import subprocess
 import time
 import urllib3
 import json
 import jsonpath
-from reposca.repoDb import RepoDb
 from reposca.analyzeSca import getScaAnalyze
 from reposca.takeRepoSca import cleanTemp
-from util.catchUtil import catch_error
 from util.popUtil import popKill
 from util.extractUtil import extractCode
 from util.formateUtil import formateUrl
+from util.catchUtil import catch_error
 from git.repo import Repo
 
 ACCESS_TOKEN = '694b8482b84b3704c70bceef66e87606'
 GIT_URL = 'https://gitee.com'
-SOURTH_PATH = '/home/chenyx/persistentRepo'
-TEMP_PATH = '/home/chenyx/tempRepo'
-# passRepoList = ['kernel','bishengjdk','gcc']
+SOURTH_PATH = 'D:/repo/persistentRepo'
+TEMP_PATH = 'D:/repo/tempRepo'
 LIC_COP_LIST = ['license', 'readme', 'notice', 'copying', 'third_party_open_source_software_notice', 'copyright']
 logging.getLogger().setLevel(logging.INFO)
 
 class PrSca(object):
-
-    # def __init__(self):
-        #连接数据库
-        # self._dbObject_ = RepoDb(
-        #     host_db = os.environ.get("MYSQL_HOST"), 
-        #     user_db = os.environ.get("MYSQL_USER"), 
-        #     password_db = os.environ.get("MYSQL_PASSWORD"), 
-        #     name_db = os.environ.get("MYSQL_DB_NAME"), 
-        #     port_db = int(os.environ.get("MYSQL_PORT")))
 
     @catch_error
     def doSca(self, url):
@@ -44,46 +33,12 @@ class PrSca(object):
             urlList = url.split("/")
             self._owner_ = urlList[3]
             self._repo_ = urlList[4]
-            #过滤
-            # for item in passRepoList:
-            #     repoLow = self._repo_.lower()
-            #     if item in repoLow:
-            #         scaResult = {
-            #             "repo_license_legal": {
-            #                 "pass": True,
-            #                 "result_code": "",
-            #                 "notice": '',
-            #                 "is_legal": {
-            #                     "pass": True,
-            #                     "license": [],
-            #                     "notice": "",
-            #                     "detail": {}
-            #                 }
-            #             },
-            #             "spec_license_legal": {
-            #                 "pass": True,
-            #                 "result_code": "",
-            #                 "notice": "",
-            #                 "detail": {}
-            #             },
-            #             "license_in_scope": {
-            #                 "pass": True,
-            #                 "result_code": "",
-            #                 "notice": ""
-            #             },
-            #             "repo_copyright_legal": {
-            #                 "pass": True,
-            #                 "result_code": "",
-            #                 "notice": "",
-            #                 "copyright": []
-            #             }
-            #         }
-            #         return scaResult
             self._num_ = urlList[6]
             self._branch_ = 'pr_' + self._num_
             gitUrl = GIT_URL + '/' + self._owner_ + '/' + self._repo_ + '.git'
             fetchUrl = 'pull/' + self._num_ + '/head:pr_' + self._num_
-            timestamp = int(time.time())
+            timestemp = int(time.time())
+            tempSrc = self._repo_ + str(timestemp)
 
             if os.path.exists(TEMP_PATH) is False:
                 os.makedirs(TEMP_PATH)
@@ -93,27 +48,32 @@ class PrSca(object):
            
             self._file_ = 'sourth'
             if os.path.exists(self._repoSrc_):
-                #TODO 上锁
-                perRepo = Repo.init(path=self._repoSrc_)
-                perRemote = perRepo.remote()
-                perRemote.pull()
-                #copy file
-                tempDir = TEMP_PATH + '/'+self._owner_ + '/' + str(timestamp) + '/' + self._repo_
-                os.makedirs(TEMP_PATH + '/'+self._owner_ + '/' + str(timestamp))
-                # shutil.copytree(self._repoSrc_, tempDir)'
-                command = shlex.split('cp -r %s  %s' % (self._repoSrc_, tempDir))
-                resultCode = subprocess.Popen(command)
-                while subprocess.Popen.poll(resultCode) == None:
-                    time.sleep(1)
-                popKill(resultCode)
-                self._repoSrc_ = tempDir              
+                try:
+                    perRepo = Repo.init(path=self._repoSrc_)
+                    perRemote = perRepo.remote()
+                    perRemote.pull()
+                    #copy file
+                    tempDir = TEMP_PATH + '/'+self._owner_ + '/' + tempSrc + '/' + self._repo_
+                    os.makedirs(TEMP_PATH + '/'+self._owner_ + '/' + tempSrc)
+                    command = shlex.split('cp -r %s  %s' % (self._repoSrc_, tempDir))
+                    resultCode = subprocess.Popen(command)
+                    while subprocess.Popen.poll(resultCode) == None:
+                        time.sleep(1)
+                    popKill(resultCode)
+                    self._repoSrc_ = tempDir
+                except Exception as e:
+                    self._file_ = 'temp'
+                    self._repoSrc_ = TEMP_PATH + '/'+self._owner_ + '/' + tempSrc + '/' + self._repo_               
+                    if os.path.exists(self._repoSrc_) is False:
+                        os.makedirs(self._repoSrc_)
+                    pass  
             else:     
                 self._file_ = 'temp'
-                self._repoSrc_ = TEMP_PATH + '/'+self._owner_ + '/' + str(timestamp) + '/' + self._repo_               
+                self._repoSrc_ = TEMP_PATH + '/'+self._owner_ + '/' + tempSrc + '/' + self._repo_               
                 if os.path.exists(self._repoSrc_) is False:
                     os.makedirs(self._repoSrc_)
-            self._anlyzeSrc_ = TEMP_PATH + '/' + self._owner_ + '/' + str(timestamp)
-            delSrc = TEMP_PATH + '/'+self._owner_ + '/' + str(timestamp)
+            self._anlyzeSrc_ = TEMP_PATH + '/' + self._owner_ + '/' + tempSrc
+            delSrc = TEMP_PATH + '/'+self._owner_ + '/' + tempSrc
 
             repo = Repo.init(path=self._repoSrc_)
             self._gitRepo_ = repo
@@ -129,10 +89,9 @@ class PrSca(object):
             # 切换分支
             self._git_.checkout(self._branch_)
             #获取PR增量文件目录
-            fileList =  self.getDiffFiles()
-            self._sca_path_ = []        
-            for diff_added in fileList:
-                self._sca_path_.append(diff_added['filename'])
+            fileList =  self.getDiffFiles()           
+            #创建diff副本
+            self._diffPath_ = self.createDiff(fileList)
             logging.info("=============End fetch repo==============")
 
             # 扫描pr文件
@@ -151,36 +110,6 @@ class PrSca(object):
                 except:
                     pass
             return scaResult
-
-    @catch_error
-    def getPrBranch(self):
-        '''
-        :param owner: 仓库所属空间地址(企业、组织或个人的地址path)
-        :param repo: 仓库路径(path)
-        :param number: 	第几个PR，即本仓库PR的序数
-        :return:head,base
-        '''
-        repoStr = "Flag"
-        apiJson = ''
-        http = urllib3.PoolManager()
-        url = 'https://gitee.com/api/v5/repos/' + self._owner_ + '/' + \
-            self._repo_ + '/pulls/' + self._num_ + '?access_token='+ACCESS_TOKEN
-        response = http.request('GET', url)
-        resStatus = response.status
-
-        while resStatus == '403':
-            return 403, 403
-
-        while resStatus == '502':
-            return 502, 502
-
-        repoStr = response.data.decode('utf-8')
-        apiJson = json.loads(repoStr)
-
-        head = jsonpath.jsonpath(apiJson, '$.head.ref')
-        base = jsonpath.jsonpath(apiJson, '$.base.ref')
-
-        return head, base
 
     @catch_error
     def getPrSca(self):
@@ -208,7 +137,7 @@ class PrSca(object):
                 logging.error("file extracCode error")
             elif reExt == "ref":
                 self._type_ = "ref"#引用仓
-                maxDepth = 3
+                # maxDepth = 3
 
             logging.info("=============Start scan repo==============")           
             # 调用scancode
@@ -313,3 +242,19 @@ class PrSca(object):
                 maxDepth = len(pathLevel)
             
         return maxDepth
+    
+    @catch_error
+    def createDiff(self, fileList):
+        self._sca_path_ = []    
+        diffPath = self._anlyzeSrc_ + "/diff" 
+        for diff_added in fileList:
+            self._sca_path_.append(diff_added['filename'])
+            tempFile = diffPath + "/" + diff_added['filename']
+            open(tempFile, 'w')
+            sourcePath = self._anlyzeSrc_ + "/" + diff_added['filename']
+            command = shlex.split('cp -r %s  %s' % (sourcePath, tempFile))
+            resultCode = subprocess.Popen(command)
+            while subprocess.Popen.poll(resultCode) == None:
+                time.sleep(1)
+            popKill(resultCode)
+        return diffPath + "/" + self._repo_
