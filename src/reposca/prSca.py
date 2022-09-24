@@ -19,8 +19,8 @@ from git.repo import Repo
 
 ACCESS_TOKEN = '694b8482b84b3704c70bceef66e87606'
 GIT_URL = 'https://gitee.com'
-SOURTH_PATH = 'D:/repo/persistentRepo'
-TEMP_PATH = 'D:/repo/tempRepo'
+SOURTH_PATH = '/home/repo/persistentRepo'
+TEMP_PATH = '/home/repo/tempRepo'
 LIC_COP_LIST = ['license', 'readme', 'notice', 'copying', 'third_party_open_source_software_notice', 'copyright']
 logging.getLogger().setLevel(logging.INFO)
 
